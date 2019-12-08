@@ -1,4 +1,6 @@
-package transport
+package codec
+
+import slog "github.com/go-eden/slf4go"
 
 const (
 	Ver        = 0b0001_0000
@@ -68,3 +70,5 @@ const (
 	TypeSliceObject  = 0x0A
 	TypeSliceUnknown = 0x0B
 )
+
+var log = slog.GetLogger()
