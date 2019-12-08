@@ -1,5 +1,9 @@
 package codec
 
+import (
+	"github.com/smartbuf/smartbuf-go/utils"
+)
+
 type EncodeBuffer struct {
 	limit  int
 	offset int
@@ -15,155 +19,156 @@ func (t *EncodeBuffer) Reset() {
 }
 
 func (t *EncodeBuffer) WriteByte(v byte) {
-
+	if len(t.data) == t.offset {
+		t.ensureCapacity(t.offset + 1)
+	}
+	t.data[t.offset] = v
+	t.offset++
 }
 
 func (t *EncodeBuffer) WriteVarInt(n int64) {
-	//t.WriteVarUint(n)
+	t.WriteVarUint(utils.IntToUint(n))
 }
 
-func (t *EncodeBuffer) WriteVarUint(n uint64) {
+func (t *EncodeBuffer) WriteVarUint(n uint64) int {
 	if len(t.data) < t.offset+10 {
-		//this.ensureCapacity(this.offset + 10);
+		t.ensureCapacity(t.offset + 10)
 	}
-	//var oldOffset = t.offset
+	var oldOffset = t.offset
+	for n != 0 || oldOffset == t.offset {
+		if (n & 0xFFFFFFFFFFFFFF80) == 0 {
+			t.data[t.offset] = byte(n)
+			t.offset++
+		} else {
+			t.data[t.offset] = byte((n | 0x80) & 0xFF)
+			t.offset++
+		}
+		n >>= 7
+	}
+	return t.offset - oldOffset
+}
 
-	//do {
-	//	if ((n & 0xFFFFFFFFFFFFFF80) == 0) {
-	//	this.data[this.offset++] = n;
-	//} else {
-	//	this.data[this.offset++] = ((n | 0x80) & 0xFF);
-	//}
-	//	n >>>= 7;
-	//} while (n != 0);
-	//return this.offset - oldOffset;
+func (t *EncodeBuffer) WriteFloat32(f float32) {
+	if len(t.data) < t.offset+4 {
+		t.ensureCapacity(t.offset + 4)
+	}
+	var bits = utils.Float32ToUint32(f)
+	for i := 0; i < 4; i++ {
+		t.data[t.offset] = byte(bits & 0xFF)
+		t.offset++
+		bits >>= 8
+	}
+}
+
+func (t *EncodeBuffer) WriteFloat64(f float64) {
+	if len(t.data) < t.offset+8 {
+		t.ensureCapacity(t.offset + 8)
+	}
+	var bits = utils.Float64ToUint64(f)
+	for i := 0; i < 8; i++ {
+		t.data[t.offset] = byte(bits & 0xFF)
+		t.offset++
+		bits >>= 8
+	}
+}
+
+func (t *EncodeBuffer) WriteString(str string) {
+	if minLen := t.offset + len(str)*4 + 4; len(t.data) < minLen {
+		t.ensureCapacity(minLen)
+	}
+	bytes := utils.EncodeUTF8(str)
+	t.WriteVarUint(uint64(len(bytes)))
+	t.WriteByteArray(bytes)
+}
+
+func (t *EncodeBuffer) WriteBoolArray(arr []bool) {
+	var l = len(arr)
+	if len(t.data) < t.offset+(l+1)/8 {
+		t.ensureCapacity(t.offset + (l+1)/8)
+	}
+	for i := 0; i < l; i += 8 {
+		var b = byte(0)
+		for j := 0; j < 8; j++ {
+			off := i + j
+			if off >= l {
+				break
+			}
+			if arr[off] {
+				b |= 1 << j
+			}
+		}
+		t.data[t.offset] = b
+		t.offset++
+	}
+}
+
+func (t *EncodeBuffer) WriteByteArray(arr []byte) {
+	var l = len(arr)
+	if len(t.data) < t.offset+l {
+		t.ensureCapacity(t.offset + l)
+	}
+	copy(t.data, arr)
+	t.offset += l
+}
+
+func (t *EncodeBuffer) WriteShortArray(arr []int16) {
+	if len(t.data) < t.offset+len(arr)*2 {
+		t.ensureCapacity(t.offset + len(arr)*2)
+	}
+	for _, s := range arr {
+		t.data[t.offset] = byte(s >> 8)
+		t.data[t.offset+1] = byte(s & 0xFF)
+		t.offset += 2
+	}
+}
+
+func (t *EncodeBuffer) WriteInt32Array(arr []int32) {
+	for _, v := range arr {
+		t.WriteVarInt(int64(v))
+	}
+}
+
+func (t *EncodeBuffer) WriteUint32Array(arr []uint32) {
+	for _, v := range arr {
+		t.WriteVarInt(int64(v))
+	}
+}
+
+func (t *EncodeBuffer) WriteInt64Array(arr []int64) {
+	for _, v := range arr {
+		t.WriteVarInt(v)
+	}
+}
+
+func (t *EncodeBuffer) WriteUint64Array(arr []uint64) {
+	for _, v := range arr {
+		t.WriteVarUint(v) // TODO as string?
+	}
+}
+
+func (t *EncodeBuffer) WriteFloat32Array(arr []float32) {
+	for _, v := range arr {
+		t.WriteFloat32(v)
+	}
+}
+func (t *EncodeBuffer) WriteFloat64Array(arr []float64) {
+	for _, v := range arr {
+		t.WriteFloat64(v)
+	}
 }
 
 func (t *EncodeBuffer) ensureCapacity(size int) {
-	//var  newSize = math.min(math.max(len(t.data) * 2, size), t.limit)
-	//if (newSize < size) {
-	//	throw new Error("no space");
-	//}
-	//let newData = new Uint8Array(newSize);
-	//newData.set(t.data);
-	//t.data = newData;
+	var newSize = size
+	if n := len(t.data) * 2; size < n {
+		newSize = n
+	}
+	if newSize > t.limit {
+		newSize = t.limit
+	}
+	if newSize < size {
+		panic("no space")
+	}
+	newData := make([]byte, newSize, newSize)
+	copy(newData, t.data)
+	t.data = newData
 }
-
-/**
-public writeVarInt(n: number): void {
-        this.writeVarUint(NumberUtils.intToUint(n));
-    }
-
-    public writeVarUint(n: number): number {
-        if (this.data.length < this.offset + 10) {
-            this.ensureCapacity(this.offset + 10);
-        }
-        let oldOffset = this.offset;
-        do {
-            if ((n & 0xFFFFFFFFFFFFFF80) == 0) {
-                this.data[this.offset++] = n;
-            } else {
-                this.data[this.offset++] = ((n | 0x80) & 0xFF);
-            }
-            n >>>= 7;
-        } while (n != 0);
-        return this.offset - oldOffset;
-    }
-
-    public writeFloat(f: number): void {
-        if (this.data.length < this.offset + 4) {
-            this.ensureCapacity(this.offset + 4);
-        }
-        let bits = NumberUtils.floatToBits(f);
-        for (let i = 0; i < 4; i++) {
-            this.data[this.offset++] = (bits & 0xFF);
-            bits >>>= 8;
-        }
-    }
-
-    public writeDouble(d: number): void {
-        if (this.data.length < this.offset + 8) {
-            this.ensureCapacity(this.offset + 8);
-        }
-        let bits = NumberUtils.doubleToBits(d);
-        for (let i = 0; i < 8; i++) {
-            this.data[this.offset++] = (bits & 0xFF);
-            bits >>>= 8;
-        }
-    }
-
-    public writeString(str: string): void {
-        let bytes = UTF8Utils.encodeUTF8(str);
-        this.writeVarUint(bytes.length);
-        this.writeByteArray(bytes);
-    }
-
-    public writeBooleanArray(arr: boolean[]): void {
-        let len = arr.length;
-        if (this.data.length < this.offset + (len + 1) / 8) {
-            this.ensureCapacity(this.offset + (len + 1) / 8);
-        }
-        let off = 0;
-        for (let i = 0; i < len; i += 8) {
-            let b = 0;
-            for (let j = 0; j < 8; j++) {
-                if ((off = i + j) >= len) {
-                    break;
-                }
-                if (arr[off]) {
-                    b |= 1 << j;
-                }
-            }
-            this.data[this.offset++] = b;
-        }
-    }
-
-    public writeByteArray(arr: Uint8Array): void {
-        let len = arr.length;
-        if (this.data.length < this.offset + len) {
-            this.ensureCapacity(this.offset + len);
-        }
-        this.data.set(arr, this.offset);
-        this.offset += len;
-    }
-
-    public writeShortArray(arr: Uint16Array): void {
-        if (this.data.length < this.offset + arr.length * 2) {
-            this.ensureCapacity(this.offset + arr.length * 2);
-        }
-        for (let i = 0; i < arr.length; i++) {
-            let s = arr[i];
-            this.data[this.offset++] = (s >> 8);
-            this.data[this.offset++] = (s & 0xFF);
-        }
-    }
-
-    public writeIntArray(arr: Uint32Array): void {
-        for (let i = 0; i < arr.length; i++) {
-            this.writeVarInt(arr[i]);
-        }
-    }
-
-    public writeFloatArray(arr: Float32Array): void {
-        for (let i = 0; i < arr.length; i++) {
-            this.writeFloat(arr[i]);
-        }
-    }
-
-    public writeDoubleArray(arr: Float64Array): void {
-        for (let i = 0; i < arr.length; i++) {
-            this.writeDouble(arr[i]);
-        }
-    }
-
-    private ensureCapacity(size: number): void {
-        let newSize = Math.min(Math.max(this.data.length * 2, size), this.limit);
-        if (newSize < size) {
-            throw new Error("no space");
-        }
-        let newData = new Uint8Array(newSize);
-        newData.set(this.data);
-        this.data = newData;
-    }
-
-*/

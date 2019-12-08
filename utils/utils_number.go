@@ -19,3 +19,19 @@ func UintToInt(l uint64) int64 {
 		return -int64(l >> 1)
 	}
 }
+
+func Float32ToUint32(f float32) uint32 {
+	return math.Float32bits(f)
+}
+
+func Uint32ToFloat32(i uint32) float32 {
+	return math.Float32frombits(i)
+}
+
+func Float64ToUint64(f float64) uint64 {
+	return math.Float64bits(f)
+}
+
+func Uint64ToFLoat64(i uint64) float64 {
+	return math.Float64frombits(i)
+}
